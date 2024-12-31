@@ -2,7 +2,7 @@
 #include "cmd.hpp"
 #include "server.hpp"
 
-#include <systemd/sd-daemon.h>
+#include "ipmi_bmc.h"
 
 #include <sdbusplus/bus.hpp>
 #include <sdbusplus/slot.hpp>
@@ -67,13 +67,13 @@ int execute(const char* channel)
     auto intf = createSMSHandler(bus, obj.c_str(), kcs);
     bus.request_name(srv.c_str());
 
-    sd_notify(0, "READY=1");
+    //sd_notify(0, "READY=1");
     return event.loop();
 }
 
 } // namespace kcsbridge
 
-int main(int argc, char* argv[])
+int kcs_main(int argc, char* argv[])
 {
     try
     {

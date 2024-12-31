@@ -1,0 +1,3 @@
+
+config OPENBMC_KCSBRIDGE
+    bool "openbmc kcsbridge"

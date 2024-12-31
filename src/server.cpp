@@ -1,6 +1,5 @@
 #include "server.hpp"
-
-#include <linux/ipmi_bmc.h>
+#include "ipmi_bmc.h"
 
 #include <sdbusplus/exception.hpp>
 #include <sdbusplus/server/interface.hpp>
