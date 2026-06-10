@@ -1,0 +1,7 @@
+config OPENBMC_KCSBRIDGE
+	bool "OpenBMC KCS Bridge"
+	default n
+	depends on IPMI
+	help
+	  Enable the KCS bridge that forwards IPMI KCS requests
+	  to the host IPMI service via D-Bus.
