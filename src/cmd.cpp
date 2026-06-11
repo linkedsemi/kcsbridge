@@ -4,9 +4,9 @@
 #include <sdbusplus/exception.hpp>
 #include <sdbusplus/message.hpp>
 #include <sdbusplus/slot.hpp>
-#include <stdplus/exception.hpp>
-#include <stdplus/fd/ops.hpp>
-#include <stdplus/print.hpp>
+#include <zephyr/drivers/ipmi.h>
+#include <zephyr/kernel.h>
+#include <zephyr/sys/printk.h>
 
 #include <array>
 #include <cstdio>
@@ -26,15 +26,14 @@ using sdbusplus::bus_t;
 using sdbusplus::message_t;
 using sdbusplus::slot_t;
 
-void write(stdplus::Fd& kcs, message_t&& m)
+void kcs_write(const struct device *kcs_dev, message_t&& m)
 {
-    std::array<uint8_t, 1024> buffer;
-    std::span<uint8_t> out(buffer.begin(), 3);
+    uint8_t buffer[1024];
+    size_t out_size = 3;
     try
     {
         if (m.is_method_error())
         {
-            // Extra copy to workaround lack of `const sd_bus_error` constructor
             auto error = *m.get_error();
             throw sdbusplus::exception::SdBusError(&error, "ipmid response");
         }
@@ -42,59 +41,62 @@ void write(stdplus::Fd& kcs, message_t&& m)
             ret;
         m.read(ret);
         const auto& [netfn, lun, cmd, cc, data] = ret;
-        // Based on the IPMI KCS spec Figure 9-2
-        // netfn needs to be changed to odd in KCS responses
-        if (data.size() + 3 > buffer.size())
+        if (data.size() + 3 > sizeof(buffer))
         {
             throw std::runtime_error(std::format(
-                "too large {} > {}", data.size() + 3, buffer.size()));
+                "too large {} > {}", data.size() + 3, sizeof(buffer)));
         }
         buffer[0] = (netfn | 1) << 2;
         buffer[0] |= lun;
         buffer[1] = cmd;
         buffer[2] = cc;
         memcpy(&buffer[3], data.data(), data.size());
-        out = std::span<uint8_t>(buffer.begin(), data.size() + 3);
+        out_size = data.size() + 3;
     }
     catch (const std::exception& e)
     {
-        stdplus::print(stderr, "IPMI response failure: {}\n", e.what());
+        printk("IPMI response failure: %s\n", e.what());
         buffer[0] |= 1 << 2;
         buffer[2] = 0xff;
     }
-    stdplus::fd::writeExact(kcs, out);
+    int ret = ipmi_write(kcs_dev, buffer, out_size);
+    if (ret < 0) {
+        printk("ipmi_write failed ret:%d\n", ret);
+    } else {
+        printk("kcs_write: response len=%zu data=", out_size);
+        for (size_t i = 0; i < out_size; i++)
+            printk("%02x ", buffer[i]);
+        printk("\n");
+    }
 }
 
-void read(stdplus::Fd& kcs, bus_t& bus, slot_t& outstanding)
+void kcs_read(const struct device *kcs_dev, bus_t& bus, slot_t& outstanding)
 {
-    std::array<uint8_t, 1024> buffer;
-    auto in = stdplus::fd::read(kcs, buffer);
-    if (in.empty())
-    {
+    uint8_t buffer[1024];
+    int ret = ipmi_read(kcs_dev, buffer, sizeof(buffer));
+    if (ret <= 0) {
+        printk("kcs_read: ipmi_read failed ret=%d\n", ret);
         return;
     }
+    size_t in_len = ret;
+
     if (outstanding)
     {
-        stdplus::print(stderr, "Canceling outstanding request\n");
+        printk("Canceling outstanding request\n");
         outstanding = slot_t(nullptr);
-    }
-    if (in.size() < 2)
-    {
-        stdplus::print(stderr, "Read too small, ignoring\n");
-        return;
     }
     auto m = bus.new_method_call("xyz.openbmc_project.Ipmi.Host",
                                  "/xyz/openbmc_project/Ipmi",
                                  "xyz.openbmc_project.Ipmi.Server", "execute");
     std::map<std::string, std::variant<int>> options;
-    // Based on the IPMI KCS spec Figure 9-1
-    uint8_t netfn = in[0] >> 2, lun = in[0] & 3, cmd = in[1];
-    m.append(netfn, lun, cmd, in.subspan(2), options);
+    uint8_t netfn = buffer[0] >> 2, lun = buffer[0] & 3, cmd = buffer[1];
+    m.append(netfn, lun, cmd,
+             std::span<uint8_t>(buffer + 2, in_len - 2), options);
     outstanding = m.call_async(
-        stdplus::exception::ignore([&outstanding, &kcs](message_t&& m) {
+        [&outstanding, kcs_dev](message_t&& m) {
             outstanding = slot_t(nullptr);
-            write(kcs, std::move(m));
-        }));
+            kcs_write(kcs_dev, std::move(m));
+        });
 }
 
 } // namespace kcsbridge

@@ -2,13 +2,14 @@
 #include <sdbusplus/bus.hpp>
 #include <sdbusplus/message.hpp>
 #include <sdbusplus/slot.hpp>
-#include <stdplus/fd/intf.hpp>
+#include <zephyr/device.h>
+#include <zephyr/drivers/ipmi.h>
 
 namespace kcsbridge
 {
 
-void write(stdplus::Fd& kcs, sdbusplus::message_t&& m);
-void read(stdplus::Fd& kcs, sdbusplus::bus_t& bus,
-          sdbusplus::slot_t& outstanding);
+void kcs_write(const struct device *kcs_dev, sdbusplus::message_t&& m);
+void kcs_read(const struct device *kcs_dev, sdbusplus::bus_t& bus,
+              sdbusplus::slot_t& outstanding);
 
 } // namespace kcsbridge

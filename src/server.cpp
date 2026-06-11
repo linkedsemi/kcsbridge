@@ -1,34 +1,36 @@
 #include "server.hpp"
-
-#include <linux/ipmi_bmc.h>
+#include "ipmi_bmc.h"
 
 #include <sdbusplus/exception.hpp>
 #include <sdbusplus/server/interface.hpp>
 #include <sdbusplus/vtable.hpp>
-#include <stdplus/fd/ops.hpp>
-#include <stdplus/print.hpp>
+#include <zephyr/drivers/ipmi.h>
+#include <zephyr/kernel.h>
+#include <zephyr/sys/printk.h>
 
 #include <cstdio>
 #include <stdexcept>
 
+#define KCS_STATUS_SMS_ATN BIT(2)
+
 namespace kcsbridge
 {
 
-void setAttention(sdbusplus::message_t& m, stdplus::Fd& kcs)
+void setAttention(sdbusplus::message_t& m, const struct device *kcs_dev)
 {
-    stdplus::fd::ioctl(kcs, IPMI_BMC_IOCTL_SET_SMS_ATN, nullptr);
+    ipmi_update_status(kcs_dev, KCS_STATUS_SMS_ATN, KCS_STATUS_SMS_ATN);
     m.new_method_return().method_return();
 }
 
-void clearAttention(sdbusplus::message_t& m, stdplus::Fd& kcs)
+void clearAttention(sdbusplus::message_t& m, const struct device *kcs_dev)
 {
-    stdplus::fd::ioctl(kcs, IPMI_BMC_IOCTL_CLEAR_SMS_ATN, nullptr);
+    ipmi_update_status(kcs_dev, KCS_STATUS_SMS_ATN, 0);
     m.new_method_return().method_return();
 }
 
-void forceAbort(sdbusplus::message_t& m, stdplus::Fd& kcs)
+void forceAbort(sdbusplus::message_t& m, const struct device *kcs_dev)
 {
-    stdplus::fd::ioctl(kcs, IPMI_BMC_IOCTL_FORCE_ABORT, nullptr);
+    ipmi_force_abort(kcs_dev);
     m.new_method_return().method_return();
 }
 
@@ -42,7 +44,7 @@ int methodRsp(sd_bus_message* mptr, void* dataptr, sd_bus_error* error) noexcept
     }
     catch (const std::exception& e)
     {
-        stdplus::print(stderr, "Method response failed: {}\n", e.what());
+        printk("Method response failed: %s\n", e.what());
         sd_bus_error_set(error,
                          "xyz.openbmc_project.Common.Error.InternalFailure",
                          "The operation failed internally.");
@@ -62,12 +64,18 @@ constexpr sdbusplus::vtable::vtable_t dbusMethods[] = {
     sdbusplus::vtable::end(),
 };
 
+/* kcs_dev_storage must outlive the returned interface object.
+ * Caller ensures this by keeping the interface alive in execute(). */
+static const struct device *kcs_dev_storage = nullptr;
+
 sdbusplus::server::interface::interface createSMSHandler(
-    sdbusplus::bus_t& bus, const char* obj, stdplus::Fd& kcs)
+    sdbusplus::bus_t& bus, const char* obj, const struct device *kcs_dev)
 {
+    kcs_dev_storage = kcs_dev;
     return sdbusplus::server::interface::interface(
         bus, obj, "xyz.openbmc_project.Ipmi.Channel.SMS",
-        dbusMethods<stdplus::Fd>, reinterpret_cast<stdplus::Fd*>(&kcs));
+        dbusMethods<const struct device *>,
+        const_cast<const struct device **>(&kcs_dev_storage));
 }
 
 } // namespace kcsbridge
