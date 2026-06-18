@@ -117,8 +117,8 @@ int execute()
      * Keep intf alive (execute() never returns, so auto intf stays in scope).
      */
     auto intf = createSMSHandler(
-        *conn, "/xyz/openbmc_project/Ipmi/Channel/kcs0", kcs_dev);
-    conn->request_name("xyz.openbmc_project.Ipmi.Channel.kcs0");
+        *conn, "/xyz/openbmc_project/Ipmi/Channel/ipmi_kcs3", kcs_dev);
+    conn->request_name("xyz.openbmc_project.Ipmi.Channel.ipmi_kcs3");
 
     printk("KCS bridge ready\n");
     k_sem_give(&kcs_bridge_ready_sem);

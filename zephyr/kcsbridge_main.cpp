@@ -332,12 +332,12 @@ extern "C" int kcsbridge_main(void)
 
     /* Request D-Bus name (set short timeout to avoid 25s default wait) */
     // sd_bus_set_method_call_timeout(kcs_ctx.bus, 5000000);  /* 5s timeout */
-    conn->request_name("xyz.openbmc_project.Ipmi.Channel.kcs0");
+    conn->request_name("xyz.openbmc_project.Ipmi.Channel.ipmi_kcs3");
     // sd_bus_set_method_call_timeout(kcs_ctx.bus, 0);        /* restore default */
 
-    /* Register SMS handler vtable on /xyz/openbmc_project/Ipmi/Channel/kcs0 */
+    /* Register SMS handler vtable on /xyz/openbmc_project/Ipmi/Channel/ipmi_kcs3 */
     sd_bus_add_object_vtable(kcs_ctx.bus, nullptr,
-                             "/xyz/openbmc_project/Ipmi/Channel/kcs0",
+                             "/xyz/openbmc_project/Ipmi/Channel/ipmi_kcs3",
                              "xyz.openbmc_project.Ipmi.Channel.SMS",
                              sms_vtable, &kcs_ctx);
 
