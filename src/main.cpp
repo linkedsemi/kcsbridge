@@ -118,10 +118,46 @@ int execute()
      */
     auto intf = createSMSHandler(
         *conn, "/xyz/openbmc_project/Ipmi/Channel/ipmi_kcs3", kcs_dev);
-    conn->request_name("xyz.openbmc_project.Ipmi.Channel.ipmi_kcs3");
 
+    /* Readiness must not be gated on a broker round-trip.
+     *
+     * request_name() is a synchronous sd_bus_request_name() that blocks until
+     * the broker answers. It used to sit in front of k_sem_give() below, and
+     * that semaphore is what start_all_auto_threads() waits on
+     * (main.cpp: THREAD_DEFINE(kcs_bridge, ..., kcs_bridge_ready_sem, ...)).
+     * One slow broker reply therefore stopped the whole boot: main stayed
+     * blocked in the semaphore, no further service thread was ever started,
+     * and "KCS bridge ready" never appeared -- while every already-started
+     * thread, including the fan sensor polling loop, kept running normally.
+     *
+     * Signal readiness first, then acquire the name. Nothing depends on
+     * kcs_bridge, so giving the semaphore early costs nothing.
+     */
     printk("KCS bridge ready\n");
     k_sem_give(&kcs_bridge_ready_sem);
+
+    /* Bound the wait: the basu port defaults to a 25s method-call timeout, and
+     * an unbounded wait here is what let one slow broker reply stall this
+     * thread indefinitely.
+     *
+     * This deliberately stays on this thread rather than being posted to the
+     * io_context. Both would block the same thread in practice, but posting it
+     * would also put a throwing completion handler inside asio, where the
+     * unwind takes down io.run() and with it this pthread. request_name()
+     * throws SdBusError on failure, and an uncaught exception out of a Zephyr
+     * pthread kills the whole process -- every other service thread included.
+     * Catch it here instead, and restore the default timeout afterwards. */
+    sd_bus_set_method_call_timeout(dbus, 5000000);
+    try
+    {
+        conn->request_name("xyz.openbmc_project.Ipmi.Channel.ipmi_kcs3");
+        printk("KCS bridge: acquired name\n");
+    }
+    catch (const std::exception& e)
+    {
+        printk("KCS bridge: request_name failed: %s\n", e.what());
+    }
+    sd_bus_set_method_call_timeout(dbus, 0);
 
     /* Schedule self-test on workqueue after 5s */
     k_work_schedule_for_queue(&kcs_work_q, &kcs_test_work, K_SECONDS(2));
