@@ -6,6 +6,12 @@ if(CONFIG_OPENBMC_KCSBRIDGE)
         ${ZEPHYR_CURRENT_MODULE_DIR}/src/server.cpp
     )
 
+    # Bring-up shell commands (kcsbridge env | hostwr | hostrd | selftest).
+    zephyr_library_sources_ifdef(
+        CONFIG_SHELL
+        ${ZEPHYR_CURRENT_MODULE_DIR}/src/kcs_shell.c
+    )
+
     zephyr_library_include_directories(
         ${ZEPHYR_CURRENT_MODULE_DIR}
     )

@@ -2,6 +2,25 @@ config OPENBMC_KCSBRIDGE
 	bool "OpenBMC KCS Bridge"
 	default n
 	depends on IPMI
+	depends on DT_HAS_LINKEDSEMI_LS_IPMI_KCS_ENABLED
 	help
 	  Enable the KCS bridge that forwards IPMI KCS requests
 	  to the host IPMI service via D-Bus.
+
+	  The bridge itself is transport agnostic (see src/kcs_channel.hpp):
+	  on Linux it opens /dev/<channel>, on Zephyr it drives the
+	  IPMI-over-KCS device selected by the ipmi_kcs devicetree node.
+
+if OPENBMC_KCSBRIDGE
+
+config OPENBMC_KCSBRIDGE_CHANNEL
+	string "KCS channel name"
+	default "ipmi-kcs3"
+	help
+	  Channel name used for the D-Bus object/service:
+	    /xyz/openbmc_project/Ipmi/Channel/<name with '-' -> '_'>
+	    xyz.openbmc_project.Ipmi.Channel.<name with '-' -> '_'>
+	  It must match the channel number ipmid was built/configured for
+	  (see the ipmi channel config written by app/src/config_fs.c).
+
+endif
